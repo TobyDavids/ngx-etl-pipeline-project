@@ -1,4 +1,4 @@
-name: Run NGX ETL Script
+name: Run NGX ETL Script Daily
 
 on:
   schedule:
@@ -11,40 +11,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.10"
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install Chromium & ChromeDriver (apt)
+      - name: Install Chromium & ChromeDriver
         run: |
           sudo apt-get update
           sudo apt-get install -y chromium-browser chromium-chromedriver
-
-      - name: Detect ChromeDriver and export CHROME_DRIVER_PATH
-        run: |
-          CHROME_DRIVER_PATH=$(command -v chromedriver || true)
-          if [ -z "$CHROME_DRIVER_PATH" ]; then
-            echo "ERROR: chromedriver not found on PATH"
-            exit 1
-          fi
-          echo "Found chromedriver at: $CHROME_DRIVER_PATH"
-          echo "CHROME_DRIVER_PATH=$CHROME_DRIVER_PATH" >> $GITHUB_ENV
-
-      - name: Verify ChromeDriver (logs)
-        run: |
-          echo "CHROME_DRIVER_PATH=$CHROME_DRIVER_PATH"
-          $CHROME_DRIVER_PATH --version
           which chromedriver
-          ls -l $(which chromedriver)
+          chromedriver --version
 
       - name: Run ETL script
         env:
@@ -58,4 +43,8 @@ jobs:
 
       - name: Send GitHub notification
         run: |
-          echo "### ✅ Data Update Successful for $(date '+%Y-%m-%d')" >> $GITHUB_STEP_SUMMARY
+          gh api repos/${{ github.repository }}/dispatches \
+            -f event_type='etl_run_complete' \
+            -f client_payload='{"message":"NGX ETL run completed successfully."}'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
