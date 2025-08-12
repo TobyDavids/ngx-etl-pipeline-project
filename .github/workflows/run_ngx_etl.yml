@@ -3,7 +3,7 @@ name: Run NGX ETL Script
 on:
   schedule:
     # Every weekday at 4 PM UTC (adjust if you want local time)
-    - cron: '0 16 * * 1-5'
+    - cron: '30 15 * * 1-5'
   workflow_dispatch: # manual trigger
 
 jobs:
