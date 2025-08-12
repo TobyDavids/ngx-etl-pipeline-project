@@ -1,273 +1,192 @@
-{
- "cells": [
-  {
-   "cell_type": "code",
-   "execution_count": 11,
-   "id": "65a77fcc",
-   "metadata": {},
-   "outputs": [
-    {
-     "name": "stdout",
-     "output_type": "stream",
-     "text": [
-      "Raw scraped data preview:\n",
-      "           Company PreviousClosingPrice Opening Price   High    Low  Close  \\\n",
-      "0         ABBEYBDS                 5.67          5.67   6.23   6.23   6.23   \n",
-      "1         ABCTRANS                  4.5           4.5     --     --     --   \n",
-      "2          ACADEMY                    9             9   8.10   8.10   8.10   \n",
-      "3       ACCESSCORP                 27.7          27.6  27.75  27.50  27.65   \n",
-      "4  AFRINSURE [MRF]                  0.2           0.2     --     --     --   \n",
-      "\n",
-      "  Change Trades      Volume             Value Trade Date  \n",
-      "0   0.56     33     348,310      2,163,094.92  12 Aug 25  \n",
-      "1            91     486,484      2,190,939.57  12 Aug 25  \n",
-      "2   -0.9     71     534,107      4,603,049.94  12 Aug 25  \n",
-      "3  -0.05   1162  42,869,540  1,181,897,051.10  12 Aug 25  \n",
-      "4             0          --                --  12 Aug 25  \n",
-      "Transformed data preview:\n",
-      "  Pricing Date  Company ID  Day Open Price(₦)  Day High Price(₦)  \\\n",
-      "0   2025-08-12    ABBEYBDS               5.67               6.23   \n",
-      "1   2025-08-12    ABCTRANS                4.5               <NA>   \n",
-      "2   2025-08-12     ACADEMY                9.0                8.1   \n",
-      "3   2025-08-12  ACCESSCORP               27.6              27.75   \n",
-      "4   2025-08-12   AFRINSURE                0.2               <NA>   \n",
-      "\n",
-      "   Day Low Price(₦)  Share Price (Daily)(₦)  Volume (Daily)  \n",
-      "0              6.23                    6.23        348310.0  \n",
-      "1              <NA>                    <NA>        486484.0  \n",
-      "2               8.1                     8.1        534107.0  \n",
-      "3              27.5                   27.65      42869540.0  \n",
-      "4              <NA>                    <NA>            <NA>  \n",
-      "[Email] failed: (535, b'5.7.8 Username and Password not accepted. For more information, go to\\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5b1f17b1804b1-458be70c5f7sm422677035e9.26 - gsmtp')\n",
-      "SUCCESS: appended 146 rows for 2025-08-12 00:00:00\n"
-     ]
+# import needed libraries
+import os
+import time
+import smtplib
+from datetime import datetime
+import re
+
+import pandas as pd
+from bs4 import BeautifulSoup
+from sqlalchemy import create_engine, text
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+from sqlalchemy import create_engine, text
+import smtplib
+
+
+URL = "https://ngxgroup.com/exchange/data/equities-price-list/"
+
+# Read configs from environment variables
+NEON_CONN = os.environ.get("NEON_CONN")
+NEON_TABLE = os.environ.get("NEON_TABLE", "my_table")
+
+CHROME_DRIVER_PATH = os.environ.get("CHROME_DRIVER_PATH", "/usr/lib/chromium-browser/chromedriver")
+
+# -------- helpers ----------
+def numeric_clean(x):
+    if pd.isna(x):
+        return pd.NA
+    s = str(x).strip()
+    if s in ("", "--", "-"):
+        return pd.NA
+    s = re.sub(r"[^\d\.]", "", s)  # remove commas and other non-digit except dot
+    try:
+        return float(s)
+    except:
+        return pd.NA
+
+# -------- scraping & transform ----------
+def scrape_ngx_table():
+    print("Starting browser for scraping...")
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
+
+    service = Service(CHROME_DRIVER_PATH)
+    driver = webdriver.Chrome(service=service, options=options)
+    wait = WebDriverWait(driver, 20)
+
+    try:
+        driver.get(URL)
+        time.sleep(2)
+
+        try:
+            cookie = wait.until(EC.element_to_be_clickable((By.ID, "cookie_action_close_header")))
+            driver.execute_script("arguments[0].click();", cookie)
+            print("Closed cookie popup")
+            time.sleep(1)
+        except Exception:
+            print("No cookie popup found")
+
+        try:
+            sel = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#latestdiclosuresEquities_length select")))
+            options_e = sel.find_elements(By.TAG_NAME, "option")
+            if options_e:
+                options_e[-1].click()
+                print("Expanded table to show all rows")
+                time.sleep(2)
+        except Exception:
+            print("Could not expand table options")
+
+        table = wait.until(EC.presence_of_element_located((By.ID, "latestdiclosuresEquities")))
+        html = table.get_attribute("outerHTML")
+        soup = BeautifulSoup(html, "html.parser")
+
+        headers = [th.get_text(strip=True) for th in soup.find("thead").find_all("th")]
+        rows = []
+        for tr in soup.find("tbody").find_all("tr"):
+            cells = [td.get_text(strip=True) for td in tr.find_all("td")]
+            rows.append(cells)
+
+        if not headers or not rows:
+            raise RuntimeError("No table headers or rows parsed")
+
+        df = pd.DataFrame(rows, columns=headers)
+        print(f"Raw scraped data preview:\n{df.head()}")
+        return df
+    finally:
+        driver.quit()
+        print("Browser closed.")
+
+def transform_df(df: pd.DataFrame) -> pd.DataFrame:
+    # Normalize column names
+    df.columns = [c.strip() for c in df.columns]
+
+    # Strip any trailing chars after company name starting with "[" if "Company" in df.columns
+    if "Company" in df.columns:
+        df["Company"] = df["Company"].astype(str).str.strip().str.split(r"\s|\[", n=1).str[0]
+
+    # Replace "--" with pd.NA everywhere
+    df.replace("--", pd.NA, inplace=True)
+
+    # Select and rename columns for the DB mapping
+    column_map = {
+        "Opening Price": "Day Open Price(₦)",
+        "High": "Day High Price(₦)",
+        "Low": "Day Low Price(₦)",
+        "Close": "Share Price (Daily)(₦)",
+        "Volume": "Volume (Daily)",
+        "Company": "Company ID",
+        "Trade Date": "Pricing Date"
     }
-   ],
-   "source": [
-    "# import needed libraries\n",
-    "import os\n",
-    "import time\n",
-    "import smtplib\n",
-    "from datetime import datetime\n",
-    "import re\n",
-    "\n",
-    "import pandas as pd\n",
-    "from bs4 import BeautifulSoup\n",
-    "from sqlalchemy import create_engine, text\n",
-    "from selenium import webdriver\n",
-    "from selenium.webdriver.chrome.service import Service\n",
-    "from selenium.webdriver.chrome.options import Options\n",
-    "from selenium.webdriver.common.by import By\n",
-    "from selenium.webdriver.support.ui import WebDriverWait\n",
-    "from selenium.webdriver.support import expected_conditions as EC\n",
-    "\n",
-    "from sqlalchemy import create_engine, text\n",
-    "import smtplib\n",
-    "\n",
-    "\n",
-    "URL = \"https://ngxgroup.com/exchange/data/equities-price-list/\"\n",
-    "\n",
-    "# Read configs from environment variables\n",
-    "NEON_CONN = os.environ.get(\"NEON_CONN\")\n",
-    "NEON_TABLE = os.environ.get(\"NEON_TABLE\", \"my_table\")\n",
-    "\n",
-    "CHROME_DRIVER_PATH = os.environ.get(\"CHROME_DRIVER_PATH\", \"/usr/lib/chromium-browser/chromedriver\")\n",
-    "\n",
-    "# -------- helpers ----------\n",
-    "def numeric_clean(x):\n",
-    "    if pd.isna(x):\n",
-    "        return pd.NA\n",
-    "    s = str(x).strip()\n",
-    "    if s in (\"\", \"--\", \"-\"):\n",
-    "        return pd.NA\n",
-    "    s = re.sub(r\"[^\\d\\.]\", \"\", s)  # remove commas and other non-digit except dot\n",
-    "    try:\n",
-    "        return float(s)\n",
-    "    except:\n",
-    "        return pd.NA\n",
-    "\n",
-    "# -------- scraping & transform ----------\n",
-    "def scrape_ngx_table():\n",
-    "    print(\"Starting browser for scraping...\")\n",
-    "    options = Options()\n",
-    "    options.add_argument(\"--headless=new\")\n",
-    "    options.add_argument(\"--no-sandbox\")\n",
-    "    options.add_argument(\"--disable-dev-shm-usage\")\n",
-    "    options.add_argument(\"--disable-gpu\")\n",
-    "    options.add_argument(\"--window-size=1920,1080\")\n",
-    "\n",
-    "    service = Service(CHROME_DRIVER_PATH)\n",
-    "    driver = webdriver.Chrome(service=service, options=options)\n",
-    "    wait = WebDriverWait(driver, 20)\n",
-    "\n",
-    "    try:\n",
-    "        driver.get(URL)\n",
-    "        time.sleep(2)\n",
-    "\n",
-    "        try:\n",
-    "            cookie = wait.until(EC.element_to_be_clickable((By.ID, \"cookie_action_close_header\")))\n",
-    "            driver.execute_script(\"arguments[0].click();\", cookie)\n",
-    "            print(\"Closed cookie popup\")\n",
-    "            time.sleep(1)\n",
-    "        except Exception:\n",
-    "            print(\"No cookie popup found\")\n",
-    "\n",
-    "        try:\n",
-    "            sel = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, \"#latestdiclosuresEquities_length select\")))\n",
-    "            options_e = sel.find_elements(By.TAG_NAME, \"option\")\n",
-    "            if options_e:\n",
-    "                options_e[-1].click()\n",
-    "                print(\"Expanded table to show all rows\")\n",
-    "                time.sleep(2)\n",
-    "        except Exception:\n",
-    "            print(\"Could not expand table options\")\n",
-    "\n",
-    "        table = wait.until(EC.presence_of_element_located((By.ID, \"latestdiclosuresEquities\")))\n",
-    "        html = table.get_attribute(\"outerHTML\")\n",
-    "        soup = BeautifulSoup(html, \"html.parser\")\n",
-    "\n",
-    "        headers = [th.get_text(strip=True) for th in soup.find(\"thead\").find_all(\"th\")]\n",
-    "        rows = []\n",
-    "        for tr in soup.find(\"tbody\").find_all(\"tr\"):\n",
-    "            cells = [td.get_text(strip=True) for td in tr.find_all(\"td\")]\n",
-    "            rows.append(cells)\n",
-    "\n",
-    "        if not headers or not rows:\n",
-    "            raise RuntimeError(\"No table headers or rows parsed\")\n",
-    "\n",
-    "        df = pd.DataFrame(rows, columns=headers)\n",
-    "        print(f\"Raw scraped data preview:\\n{df.head()}\")\n",
-    "        return df\n",
-    "    finally:\n",
-    "        driver.quit()\n",
-    "        print(\"Browser closed.\")\n",
-    "\n",
-    "def transform_df(df: pd.DataFrame) -> pd.DataFrame:\n",
-    "    # Normalize column names\n",
-    "    df.columns = [c.strip() for c in df.columns]\n",
-    "\n",
-    "    # Strip any trailing chars after company name starting with \"[\" if \"Company\" in df.columns\n",
-    "    if \"Company\" in df.columns:\n",
-    "        df[\"Company\"] = df[\"Company\"].astype(str).str.strip().str.split(r\"\\s|\\[\", n=1).str[0]\n",
-    "\n",
-    "    # Replace \"--\" with pd.NA everywhere\n",
-    "    df.replace(\"--\", pd.NA, inplace=True)\n",
-    "\n",
-    "    # Select and rename columns for the DB mapping\n",
-    "    column_map = {\n",
-    "        \"Opening Price\": \"Day Open Price(₦)\",\n",
-    "        \"High\": \"Day High Price(₦)\",\n",
-    "        \"Low\": \"Day Low Price(₦)\",\n",
-    "        \"Close\": \"Share Price (Daily)(₦)\",\n",
-    "        \"Volume\": \"Volume (Daily)\",\n",
-    "        \"Company\": \"Company ID\",\n",
-    "        \"Trade Date\": \"Pricing Date\"\n",
-    "    }\n",
-    "\n",
-    "    # Make sure all keys exist, else fail early\n",
-    "    missing_cols = [k for k in column_map.keys() if k not in df.columns]\n",
-    "    if missing_cols:\n",
-    "        raise RuntimeError(f\"Missing expected columns in raw data: {missing_cols}\")\n",
-    "\n",
-    "    out_df = pd.DataFrame()\n",
-    "    for src_col, tgt_col in column_map.items():\n",
-    "        out_df[tgt_col] = df[src_col]\n",
-    "\n",
-    "    # Clean numeric columns\n",
-    "    for col in [\"Day Open Price(₦)\", \"Day High Price(₦)\", \"Day Low Price(₦)\", \"Share Price (Daily)(₦)\"]:\n",
-    "        out_df[col] = out_df[col].apply(numeric_clean).astype(\"Float64\")\n",
-    "\n",
-    "    # Clean Volume column: remove commas, convert to float\n",
-    "    out_df[\"Volume (Daily)\"] = out_df[\"Volume (Daily)\"].apply(numeric_clean).astype(\"Float64\")\n",
-    "\n",
-    "    # Parse Pricing Date (e.g., \"12 Aug 25\" to timestamp 2025-08-12)\n",
-    "    out_df[\"Pricing Date\"] = pd.to_datetime(out_df[\"Pricing Date\"], format=\"%d %b %y\", errors=\"coerce\")\n",
-    "    if out_df[\"Pricing Date\"].isna().any():\n",
-    "        # Try generic parse if strict failed\n",
-    "        out_df[\"Pricing Date\"] = pd.to_datetime(out_df[\"Pricing Date\"], errors=\"coerce\")\n",
-    "\n",
-    "    # Remove rows with missing Pricing Date or Company ID\n",
-    "    out_df[\"Company ID\"] = out_df[\"Company ID\"].astype(str).str.strip()\n",
-    "    out_df.loc[out_df[\"Company ID\"].isin([\"nan\", \"None\", \"\"]), \"Company ID\"] = pd.NA\n",
-    "    out_df = out_df.dropna(subset=[\"Pricing Date\", \"Company ID\"], how=\"any\")\n",
-    "\n",
-    "    print(f\"Transformed data preview:\\n{out_df.head()}\")\n",
-    "    return out_df\n",
-    "\n",
-    "def append_to_db(df: pd.DataFrame):\n",
-    "    if not NEON_CONN:\n",
-    "        raise RuntimeError(\"NEON_CONN not set in environment\")\n",
-    "\n",
-    "    engine = create_engine(NEON_CONN, echo=False)\n",
-    "    conn = engine.connect()\n",
-    "\n",
-    "    try:\n",
-    "        # Remove duplicates based on Pricing Date and Company ID already in DB\n",
-    "        df_dates = pd.to_datetime(df[\"Pricing Date\"]).dt.date.unique().tolist()\n",
-    "\n",
-    "        for d in df_dates:\n",
-    "            delete_sql = text(f\"DELETE FROM {NEON_TABLE} WHERE DATE(\\\"Pricing Date\\\") = :d\")\n",
-    "            conn.execute(delete_sql, {\"d\": d})\n",
-    "\n",
-    "        df.to_sql(NEON_TABLE, engine, if_exists=\"append\", index=False, method=\"multi\", chunksize=5000)\n",
-    "        print(f\"Appended {len(df)} rows to DB\")\n",
-    "    finally:\n",
-    "        conn.close()\n",
-    "        engine.dispose()\n",
-    "\n",
-    "def main():\n",
-    "    start = datetime.utcnow()\n",
-    "    try:\n",
-    "        raw = scrape_ngx_table()\n",
-    "        transformed = transform_df(raw)\n",
-    "\n",
-    "        if transformed.empty:\n",
-    "            raise RuntimeError(\"No rows after transformation — nothing to append\")\n",
-    "\n",
-    "        append_to_db(transformed)\n",
-    "\n",
-    "        max_date = transformed[\"Pricing Date\"].max()\n",
-    "        rows = len(transformed)\n",
-    "        print(f\"SUCCESS: appended {rows} rows for {max_date}\")\n",
-    "\n",
-    "    except Exception as e:\n",
-    "        print(f\"ERROR: {e}\")\n",
-    "        raise\n",
-    "\n",
-    "if __name__ == \"__main__\":\n",
-    "    main()\n"
-   ]
-  },
-  {
-   "cell_type": "code",
-   "execution_count": null,
-   "id": "3e32cf9e",
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "pd.read_sql(\"SELECT\")"
-   ]
-  }
- ],
- "metadata": {
-  "kernelspec": {
-   "display_name": "Python 3 (ipykernel)",
-   "language": "python",
-   "name": "python3"
-  },
-  "language_info": {
-   "codemirror_mode": {
-    "name": "ipython",
-    "version": 3
-   },
-   "file_extension": ".py",
-   "mimetype": "text/x-python",
-   "name": "python",
-   "nbconvert_exporter": "python",
-   "pygments_lexer": "ipython3",
-   "version": "3.11.5"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 5
-}
+
+    # Make sure all keys exist, else fail early
+    missing_cols = [k for k in column_map.keys() if k not in df.columns]
+    if missing_cols:
+        raise RuntimeError(f"Missing expected columns in raw data: {missing_cols}")
+
+    out_df = pd.DataFrame()
+    for src_col, tgt_col in column_map.items():
+        out_df[tgt_col] = df[src_col]
+
+    # Clean numeric columns
+    for col in ["Day Open Price(₦)", "Day High Price(₦)", "Day Low Price(₦)", "Share Price (Daily)(₦)"]:
+        out_df[col] = out_df[col].apply(numeric_clean).astype("Float64")
+
+    # Clean Volume column: remove commas, convert to float
+    out_df["Volume (Daily)"] = out_df["Volume (Daily)"].apply(numeric_clean).astype("Float64")
+
+    # Parse Pricing Date (e.g., "12 Aug 25" to timestamp 2025-08-12)
+    out_df["Pricing Date"] = pd.to_datetime(out_df["Pricing Date"], format="%d %b %y", errors="coerce")
+    if out_df["Pricing Date"].isna().any():
+        # Try generic parse if strict failed
+        out_df["Pricing Date"] = pd.to_datetime(out_df["Pricing Date"], errors="coerce")
+
+    # Remove rows with missing Pricing Date or Company ID
+    out_df["Company ID"] = out_df["Company ID"].astype(str).str.strip()
+    out_df.loc[out_df["Company ID"].isin(["nan", "None", ""]), "Company ID"] = pd.NA
+    out_df = out_df.dropna(subset=["Pricing Date", "Company ID"], how="any")
+
+    print(f"Transformed data preview:\n{out_df.head()}")
+    return out_df
+
+def append_to_db(df: pd.DataFrame):
+    if not NEON_CONN:
+        raise RuntimeError("NEON_CONN not set in environment")
+
+    engine = create_engine(NEON_CONN, echo=False)
+    conn = engine.connect()
+
+    try:
+        # Remove duplicates based on Pricing Date and Company ID already in DB
+        df_dates = pd.to_datetime(df["Pricing Date"]).dt.date.unique().tolist()
+
+        for d in df_dates:
+            delete_sql = text(f"DELETE FROM {NEON_TABLE} WHERE DATE(\"Pricing Date\") = :d")
+            conn.execute(delete_sql, {"d": d})
+
+        df.to_sql(NEON_TABLE, engine, if_exists="append", index=False, method="multi", chunksize=5000)
+        print(f"Appended {len(df)} rows to DB")
+    finally:
+        conn.close()
+        engine.dispose()
+
+def main():
+    start = datetime.utcnow()
+    try:
+        raw = scrape_ngx_table()
+        transformed = transform_df(raw)
+
+        if transformed.empty:
+            raise RuntimeError("No rows after transformation — nothing to append")
+
+        append_to_db(transformed)
+
+        max_date = transformed["Pricing Date"].max()
+        rows = len(transformed)
+        print(f"SUCCESS: appended {rows} rows for {max_date}")
+
+    except Exception as e:
+        print(f"ERROR: {e}")
+        raise
+
+if __name__ == "__main__":
+    main()
