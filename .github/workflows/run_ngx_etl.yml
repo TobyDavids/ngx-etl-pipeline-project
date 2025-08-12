@@ -51,9 +51,17 @@ jobs:
         run: |
           if python ngx_etl.py; then
             echo "ETL script completed successfully ✅"
-            echo "success"
+            echo "success" > etl_status.txt
           else
             echo "ETL script failed ❌"
-            echo "failed"
+            echo "failed" > etl_status.txt
             exit 1
           fi
+
+      - name: Display Final Status
+        if: always()
+        run: |
+          echo "===================="
+          echo "FINAL STATUS:"
+          cat etl_status.txt || echo "No status file found."
+          echo "===================="
