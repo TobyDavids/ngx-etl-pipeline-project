@@ -1,0 +1,41 @@
+name: Run NGX ETL Script
+
+on:
+  schedule:
+    # Every weekday at 4 PM UTC (adjust if you want local time)
+    - cron: '0 16 * * 1-5'
+  workflow_dispatch: # manual trigger
+
+jobs:
+  run-etl:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Chromium and ChromeDriver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y chromium-browser chromium-chromedriver
+
+      - name: Run ETL script
+        env:
+          NEON_CONN: ${{ secrets.NEON_CONN }}
+          NEON_TABLE: ${{ secrets.NEON_TABLE }}
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          CHROME_DRIVER_PATH: /usr/lib/chromium-browser/chromedriver
+        run: |
+          python ngx_etl.py
