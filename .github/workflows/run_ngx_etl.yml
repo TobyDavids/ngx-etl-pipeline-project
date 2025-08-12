@@ -2,8 +2,8 @@ name: Run NGX ETL Script
 
 on:
   schedule:
-    # Weekdays at 4:45pm WAT (WAT = UTC+1) -> 15:45 UTC
-    - cron: '45 15 * * 1-5'
+    # Weekdays at 4:30pm WAT (WAT = UTC+1) -> 15:30 UTC
+    - cron: '30 15 * * 1-5'
   workflow_dispatch: # manual run button in Actions
 
 jobs:
