@@ -30,7 +30,17 @@ jobs:
           sudo apt-get install -y chromium-browser chromium-chromedriver
           which chromedriver
           chromedriver --version
+          
+      - name: Detect ChromeDriver
+        run: |
+          echo "CHROME_DRIVER_PATH=$(which chromedriver)"
+          chromedriver --version
 
+      - name: Verify ChromeDriver
+        run: |
+          ls -l $(which chromedriver)
+          chromedriver --version
+      
       - name: Run ETL script
         env:
           NEON_CONN: ${{ secrets.NEON_CONN }}
@@ -39,13 +49,11 @@ jobs:
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: |
-          python ngx_etl.py
-
-      - name: Send GitHub Notification
-        uses: peter-evans/create-or-update-comment@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          issue-number: 1
-          body: |
-            ✅ NGX ETL script ran successfully at $(date -u)
-            Data has been updated for today.
+          if python ngx_etl.py; then
+            echo "ETL script completed successfully ✅"
+            echo "success"
+          else
+            echo "ETL script failed ❌"
+            echo "failed"
+            exit 1
+          fi
