@@ -4,7 +4,7 @@ on:
   schedule:
     # Weekdays at 4:30pm WAT (WAT = UTC+1) -> 15:30 UTC
     - cron: '30 15 * * 1-5'
-  workflow_dispatch: # manual run button in Actions
+  workflow_dispatch:
 
 jobs:
   run-etl:
@@ -30,7 +30,7 @@ jobs:
           sudo apt-get install -y chromium-browser chromium-chromedriver
           which chromedriver
           chromedriver --version
-          
+
       - name: Detect ChromeDriver
         run: |
           echo "CHROME_DRIVER_PATH=$(which chromedriver)"
@@ -40,8 +40,9 @@ jobs:
         run: |
           ls -l $(which chromedriver)
           chromedriver --version
-      
+
       - name: Run ETL script
+        id: etl
         env:
           NEON_CONN: ${{ secrets.NEON_CONN }}
           NEON_TABLE: ${{ secrets.NEON_TABLE }}
@@ -50,18 +51,26 @@ jobs:
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: |
           if python ngx_etl.py; then
+            echo "status=success" >> $GITHUB_ENV
             echo "ETL script completed successfully ✅"
-            echo "success" > etl_status.txt
           else
+            echo "status=failed" >> $GITHUB_ENV
             echo "ETL script failed ❌"
-            echo "failed" > etl_status.txt
             exit 1
           fi
 
-      - name: Display Final Status
-        if: always()
-        run: |
-          echo "===================="
-          echo "FINAL STATUS:"
-          cat etl_status.txt || echo "No status file found."
-          echo "===================="
+      - name: Send email notification
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: "NGX ETL Script ${{ env.status }}"
+          to: ${{ secrets.EMAIL_TO }}
+          from: "GitHub Actions Bot <${{ secrets.EMAIL_USER }}>"
+          content_type: text/plain
+          body: |
+            The NGX ETL script has completed.
+            Status: ${{ env.status }}
+            Run details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
