@@ -2,9 +2,9 @@ name: Run NGX ETL Script
 
 on:
   schedule:
-    # Every weekday at 4 PM UTC (adjust if you want local time)
-    - cron: '30 15 * * 1-5'
-  workflow_dispatch: # manual trigger
+    # Weekdays at 4:45pm WAT (WAT = UTC+1) -> 15:45 UTC
+    - cron: '45 15 * * 1-5'
+  workflow_dispatch: # manual run button in Actions
 
 jobs:
   run-etl:
@@ -14,28 +14,49 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Set up Python 3.11
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.11
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install Chromium and ChromeDriver
+      - name: Install Chromium & ChromeDriver (apt)
         run: |
           sudo apt-get update
           sudo apt-get install -y chromium-browser chromium-chromedriver
+        # no env added here; we'll detect actual chromedriver path next
+
+      - name: Detect ChromeDriver and export CHROME_DRIVER_PATH
+        run: |
+          # find chromedriver binary
+          CHROME_DRIVER_PATH=$(command -v chromedriver || true)
+          if [ -z "$CHROME_DRIVER_PATH" ]; then
+            echo "ERROR: chromedriver not found on PATH"
+            exit 1
+          fi
+          echo "Found chromedriver at: $CHROME_DRIVER_PATH"
+          # persist to GITHUB_ENV so later steps can use it
+          echo "CHROME_DRIVER_PATH=$CHROME_DRIVER_PATH" >> $GITHUB_ENV
+
+      - name: Verify ChromeDriver (logs)
+        run: |
+          echo "CHROME_DRIVER_PATH=$CHROME_DRIVER_PATH"
+          $CHROME_DRIVER_PATH --version
+          which chromedriver
+          ls -l $(which chromedriver)
 
       - name: Run ETL script
         env:
+          # other secrets from repo settings
           NEON_CONN: ${{ secrets.NEON_CONN }}
           NEON_TABLE: ${{ secrets.NEON_TABLE }}
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          CHROME_DRIVER_PATH: /usr/lib/chromium-browser/chromedriver
+          # CHROME_DRIVER_PATH has already been written into $GITHUB_ENV and is available here
         run: |
           python ngx_etl.py
