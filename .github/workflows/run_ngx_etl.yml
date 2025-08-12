@@ -41,10 +41,11 @@ jobs:
         run: |
           python ngx_etl.py
 
-      - name: Send GitHub notification
-        run: |
-          gh api repos/${{ github.repository }}/dispatches \
-            -f event_type='etl_run_complete' \
-            -f client_payload='{"message":"NGX ETL run completed successfully."}'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Send GitHub Notification
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: 1
+          body: |
+            ✅ NGX ETL script ran successfully at $(date -u)
+            Data has been updated for today.
