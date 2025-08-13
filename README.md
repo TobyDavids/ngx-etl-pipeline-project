@@ -1,7 +1,7 @@
-# NGX ETL Pipeline – Senko Finance Project
+# NGX ETL Pipeline – Finance Project
 
 ## 📌 Overview
-This project is a **Production-Ready ETL (Extract, Transform, Load) pipeline** designed to automatically pull, clean, and load **daily Nigerian Stock Exchange (NGX)** data into Senko Finance’s analytics environment.
+This project is a **Production-Ready ETL (Extract, Transform, Load) pipeline** designed to automatically pull, clean, and load **daily Nigerian Stock Exchange (NGX)** data into a Finance’s analytics environment.
 
 The pipeline is fully automated using **GitHub Actions**, running **every weekday at 4:30 PM WAT** (15:30 UTC) to ensure our team always has fresh, accurate market data for analysis and decision-making.
 
@@ -44,14 +44,14 @@ The pipeline is fully automated using **GitHub Actions**, running **every weekda
 
 ---
 
-## 🎯 Impact at Senko Finance
+## 🎯 Impact for this Finance Project
 This ETL pipeline enables:
 - **Timely market insights** – Always working with the latest NGX data.
 - **Automated workflows** – No manual downloads or processing.
 - **Data accuracy & consistency** – Reduces errors in analysis.
 - **Scalable infrastructure** – Easy to expand to other exchanges or data sources.
 
-As a **Data Engineer & Analyst** at Senko Finance, this pipeline empowers me to:
+As a **Data Engineer & Analyst**, this pipeline empowers me to:
 - Deliver up-to-date market dashboards for traders & analysts.
 - Free up valuable time from repetitive manual tasks.
 - Support better investment decisions with fresh, reliable data.
