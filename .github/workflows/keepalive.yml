@@ -1,0 +1,12 @@
+name: Keepalive Workflow
+on:
+  schedule:
+    - cron: '0 0 */25 * *' # runs every 25 days
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep workflow active
+        run: echo "Keeping workflows alive on $(date)"
