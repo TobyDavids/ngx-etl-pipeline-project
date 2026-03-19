@@ -1,0 +1,47 @@
+name: Drive to DB Pipeline
+
+on:
+  push:
+    branches:
+      - feature/drive-to-db
+  workflow_dispatch:
+
+jobs:
+  run-pipeline:
+    name: Parse Excel files and load to Neon DB
+    runs-on: ubuntu-latest
+
+    env:
+      NEON_CONN:  ${{ secrets.NEON_CONN }}
+      NEON_TABLE: ${{ secrets.NEON_TABLE }}
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas openpyxl numpy psycopg2-binary
+
+      - name: List data files
+        run: |
+          echo "Files in data/ folder:"
+          ls -lh data/ || echo "WARNING: data/ folder not found"
+
+      - name: Run pipeline
+        run: python drive_to_db.py
+
+      - name: Done
+        run: |
+          echo "✓ Pipeline complete"
+          echo "  Tables loaded:"
+          echo "  - ${{ secrets.NEON_TABLE }}_income_statement"
+          echo "  - ${{ secrets.NEON_TABLE }}_balance_sheet"
+          echo "  - ${{ secrets.NEON_TABLE }}_cash_flow"
