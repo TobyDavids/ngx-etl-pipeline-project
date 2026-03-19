@@ -77,9 +77,12 @@ def detect_statement_type(filename):
 
 def find_header_row(filepath, sheet_name):
     try:
+        ext = os.path.splitext(filepath)[1].lower()
+        engine = "openpyxl" if ext == ".xlsx" else "xlrd"
         peek = pd.read_excel(
             filepath, sheet_name=sheet_name,
-            header=None, nrows=25, dtype=str
+            header=None, nrows=25, dtype=str,
+            engine=engine
         )
     except Exception:
         return 12
@@ -98,9 +101,12 @@ def find_header_row(filepath, sheet_name):
 
 def extract_company_name(filepath, sheet_name):
     try:
+        ext = os.path.splitext(filepath)[1].lower()
+        engine = "openpyxl" if ext == ".xlsx" else "xlrd"
         peek = pd.read_excel(
             filepath, sheet_name=sheet_name,
-            header=None, nrows=5, dtype=str
+            header=None, nrows=5, dtype=str,
+            engine=engine
         )
     except Exception:
         return sheet_name
@@ -251,12 +257,15 @@ def parse_sheet(filepath, sheet_name, sector):
     company_name = extract_company_name(filepath, sheet_name)
 
     try:
+        ext = os.path.splitext(filepath)[1].lower()
+        engine = "openpyxl" if ext == ".xlsx" else "xlrd"
         df_raw = pd.read_excel(
             filepath,
             sheet_name=sheet_name,
             header=header_row,
             index_col=0,
-            dtype=str
+            dtype=str,
+            engine=engine
         )
     except Exception as e:
         print(f"    [ERROR] Could not read sheet '{sheet_name}': {e}")
@@ -326,7 +335,10 @@ def process_excel_file(filepath):
     print(f"  Table    : {STATEMENT_TABLE_MAP.get(statement_type, 'unknown')}")
 
     try:
-        xl = pd.ExcelFile(filepath)
+        # Explicitly set engine based on file extension
+        ext = os.path.splitext(filepath)[1].lower()
+        engine = "openpyxl" if ext == ".xlsx" else "xlrd"
+        xl = pd.ExcelFile(filepath, engine=engine)
     except Exception as e:
         print(f"  [ERROR] Cannot open file: {e}")
         return statement_type, pd.DataFrame()
