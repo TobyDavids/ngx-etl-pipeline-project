@@ -19,7 +19,7 @@ jobs:
       NEON_TABLE:        ${{ secrets.NEON_TABLE }}
       GDRIVE_INCOME_ID:  ${{ secrets.GDRIVE_INCOME_ID }}
       GDRIVE_BALANCE_ID: ${{ secrets.GDRIVE_BALANCE_ID }}
-      GDRIVE_CASHFLOW_ID:${{ secrets.GDRIVE_CASHFLOW_ID }}
+      GDRIVE_CASHFLOW_ID: ${{ secrets.GDRIVE_CASHFLOW_ID }}
 
     steps:
 
