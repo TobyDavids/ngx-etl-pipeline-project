@@ -70,7 +70,6 @@ dmypy.json
 
 # Logs and data
 logs/
-data/
 
 # Chromedriver (local binary)
 chromedriver.exe
