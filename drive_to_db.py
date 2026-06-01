@@ -43,10 +43,17 @@ def load_data_with_upsert(df, table_name, engine):
     staging_table = f"temp_staging_{table_name}"
     
     with engine.begin() as conn:
-        # 1. Batch upload to a temporary staging table
+        # 1. Deduplicate before staging (keep last occurrence per PK)
+        before = len(df)
+        df = df.drop_duplicates(subset=['company', 'variable', 'period'], keep='last')
+        dropped = before - len(df)
+        if dropped:
+            print(f"   ⚠️  Dropped {dropped} duplicate rows before upsert.")
+
+        # 2. Batch upload to a temporary staging table
         df.to_sql(staging_table, conn, if_exists='replace', index=False)
         
-        # 2. Merge staging to master (Targets existing PK: company, variable, period)
+        # 3. Merge staging to master (Targets existing PK: company, variable, period)
         merge_query = text(f"""
             INSERT INTO {table_name} 
             (company, variable, period, date, value, currency, unit, source, loaded_at)
@@ -61,9 +68,8 @@ def load_data_with_upsert(df, table_name, engine):
         """)
         conn.execute(merge_query)
         
-        # 3. Drop staging table
+        # 4. Drop staging table
         conn.execute(text(f"DROP TABLE {staging_table}"))
-
 # ══════════════════════════════════════════════════════════════════════════════
 # 2. FILE DETECTION
 # ══════════════════════════════════════════════════════════════════════════════
